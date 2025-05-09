@@ -1,13 +1,18 @@
+# src/utils.py
 import os
 import re
 import pandas as pd
-from typing import Set, List, Tuple, Dict, Any
+from typing import Set, List, Tuple, Dict, Any, Optional 
 from enum import Enum
+
+# Forward declare Enums and TypedDict for type hints.
+# These will be fully defined in chatbot_engine.py and assigned here later
+# to avoid circular import issues during initial module loading.
 class ConversationStage(Enum):
     pass
 class Intent(Enum):
     pass
-class ChatState(dict): 
+class ChatState(dict): # Using dict as a placeholder
     pass
 
 
@@ -37,14 +42,8 @@ def load_eligible_postcodes(file_path: str) -> Tuple[Set[str], List[str]]:
         postcodes_raw = [str(pc) for pc in df[postcode_col] if pd.notna(pc) and str(pc).strip()]
         normalized_postcodes = [normalize_postcode(pc) for pc in postcodes_raw]
         
-        # Filter out any empty strings that might result from normalization of invalid entries
         valid_normalized_postcodes = {pc for pc in normalized_postcodes if pc}
-        # Keep the raw list corresponding to valid normalized postcodes for FAISS original suggestions
-        # This mapping is a bit tricky; for simplicity, we use the raw list if it's not empty,
-        # otherwise, we fall back to normalized ones or samples.
-        # A more robust approach might pair raw and normalized before filtering.
         valid_raw_postcodes = [raw for raw, norm in zip(postcodes_raw, normalized_postcodes) if norm in valid_normalized_postcodes]
-
 
         if not valid_normalized_postcodes:
             print(f"No valid postcodes found in {file_path} (column: {postcode_col}). Using sample data.")
@@ -57,22 +56,21 @@ def load_eligible_postcodes(file_path: str) -> Tuple[Set[str], List[str]]:
         print(f"Error loading postcodes from {file_path}: {e}. Using sample data.")
         return set(sample_postcodes), sample_postcodes
 
-def log_interaction(state: ChatState, action_type: str, user_input: Optional[str] = None, bot_response: Optional[str] = None, details: Optional[Dict] = None) -> ChatState:
+def log_interaction(state: ChatState, action_type: str, user_input: Optional[str] = None, bot_response: Optional[str] = None, details: Optional[Dict] = None) -> ChatState: 
     if "interaction_history" not in state:
         state["interaction_history"] = []
     
     current_stage_val = state.get("conversation_stage")
-    if isinstance(current_stage_val, Enum): # Check if ConversationStage is now a proper Enum
+    if isinstance(current_stage_val, Enum):
         current_stage_val = current_stage_val.value
     
     current_intent_val = state.get("intent")
-    if isinstance(current_intent_val, Enum): # Check if Intent is now a proper Enum
+    if isinstance(current_intent_val, Enum):
         current_intent_val = current_intent_val.value
     elif current_intent_val is None and hasattr(Intent, 'UNKNOWN') and isinstance(Intent.UNKNOWN, Enum):
-         current_intent_val = Intent.UNKNOWN.value
+            current_intent_val = Intent.UNKNOWN.value
     else:
         current_intent_val = str(current_intent_val) if current_intent_val is not None else "unknown"
-
 
     interaction = {
         "timestamp": pd.Timestamp.now().isoformat(),
