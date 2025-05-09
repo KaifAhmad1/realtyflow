@@ -1,0 +1,10 @@
+langchain
+langgraph
+langchain-google-genai
+google-generativeai
+pandas
+faiss-cpu
+tiktoken
+python-dotenv
+streamlit
+numpy
