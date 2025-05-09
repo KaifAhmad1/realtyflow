@@ -1,6 +1,7 @@
+# src/chatbot_engine.py
 import uuid
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Any, TypedDict
+from typing import Dict, List, Optional, Set, Tuple, Any, TypedDict # <--- Ensure all are here
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -11,7 +12,7 @@ from .utils import normalize_postcode, load_eligible_postcodes, log_interaction
 from .agents import (
     EnhancedIntentClassifierAgent, EnhancedInfoGathererAgent,
     EnhancedBudgetProcessorAgent, EnhancedPostcodeProcessorAgent,
-    AgentIntent, AgentBuyType, AgentYesNo 
+    AgentIntent, AgentBuyType, AgentYesNo
 )
 
 # --- Canonical Enums and State Definition for the Graph ---
@@ -42,32 +43,33 @@ class ConversationStage(str, Enum):
     AWAITING_REASSISTANCE = "awaiting_reassistance"
     ENDED = "ended"
 
-class ChatState(TypedDict):
-    messages: List[BaseMessage]
-    intent: Optional[Intent]
-    buy_type: Optional[BuyType]
-    name: Optional[str]
-    phone: Optional[str]
-    email: Optional[str]
-    budget: Optional[float]
-    postcode: Optional[str] # Normalized
-    raw_postcode_input: Optional[str]
-    postcode_covered: Optional[bool]
-    suggested_postcode: Optional[str] # Raw format
+class ChatState(TypedDict): # <--- TypedDict
+    messages: List[BaseMessage] # <--- List
+    intent: Optional[Intent] # <--- Optional
+    buy_type: Optional[BuyType] # <--- Optional
+    name: Optional[str] # <--- Optional
+    phone: Optional[str] # <--- Optional
+    email: Optional[str] # <--- Optional
+    budget: Optional[float] # <--- Optional
+    postcode: Optional[str] # <--- Optional
+    raw_postcode_input: Optional[str] # <--- Optional
+    postcode_covered: Optional[bool] # <--- Optional
+    suggested_postcode: Optional[str] # <--- Optional
     attempts: int
     conversation_ended: bool
     conversation_stage: ConversationStage
-    last_error: Optional[str]
+    last_error: Optional[str] # <--- Optional
     session_id: str
-    interaction_history: List[Dict[str, Any]]
+    interaction_history: List[Dict[str, Any]] # <--- List, Dict, Any
 
 # --- Initialize Models and Agents ---
+# (This part remains the same)
 try:
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=GOOGLE_API_KEY, convert_system_message_to_human=True)
     embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GOOGLE_API_KEY)
 except Exception as e:
     print(f"FATAL: Failed to initialize Google Generative AI models: {e}")
-    raise # This will prevent the app from starting if models fail
+    raise
 
 intent_classifier = EnhancedIntentClassifierAgent(llm)
 info_gatherer = EnhancedInfoGathererAgent(llm)
@@ -76,6 +78,7 @@ eligible_postcodes_set, eligible_postcodes_list_raw = load_eligible_postcodes(PO
 postcode_processor = EnhancedPostcodeProcessorAgent(eligible_postcodes_set, eligible_postcodes_list_raw, embedding_model, llm)
 
 # --- LangGraph Node Functions ---
+# (All node functions remain the same, their type hints use the now-imported types)
 def create_initial_state() -> ChatState:
     return ChatState(
         messages=[], intent=None, buy_type=None, name=None, phone=None, email=None,
@@ -100,7 +103,7 @@ def initial_greeting_node(state: ChatState) -> ChatState:
 def handle_intent_node(state: ChatState) -> ChatState:
     user_msg = state["messages"][-1].content
     agent_intent_val = intent_classifier.classify_intent(user_msg)
-    state["intent"] = Intent(agent_intent_val.value) # Convert from AgentIntent to graph's Intent
+    state["intent"] = Intent(agent_intent_val.value) 
 
     if state["intent"] == Intent.UNKNOWN:
         state["attempts"] += 1
@@ -148,7 +151,7 @@ def handle_email_node(state: ChatState) -> ChatState:
     is_valid, reason_or_empty, email_val = info_gatherer.get_email(state, user_msg)
     if not is_valid:
         state["attempts"] += 1
-        bot_response = reason_or_empty # This is the error message
+        bot_response = reason_or_empty 
         log_type = "get_email_invalid"
     else:
         state["email"] = email_val
@@ -160,7 +163,7 @@ def handle_email_node(state: ChatState) -> ChatState:
         elif state["intent"] == Intent.SELL:
             bot_response = "What is the postcode of the property you're selling?"
             state["conversation_stage"] = ConversationStage.AWAITING_POSTCODE
-        else: # Should ideally not happen
+        else: 
             bot_response = "Thank you. Please tell me the postcode of interest."
             state["conversation_stage"] = ConversationStage.AWAITING_POSTCODE
     state["messages"].append(AIMessage(content=bot_response))
@@ -189,7 +192,7 @@ def handle_budget_node(state: ChatState) -> ChatState:
     budget_val, reason_or_empty = budget_processor.process_budget(user_msg)
     if budget_val is None:
         state["attempts"] += 1
-        bot_response = reason_or_empty # This is error message
+        bot_response = reason_or_empty 
         log_type = "get_budget_invalid"
     else:
         state["budget"] = budget_val
@@ -214,7 +217,7 @@ def handle_postcode_node(state: ChatState) -> ChatState:
     
     norm_pc, is_covered, suggestion_raw, error_msg = postcode_processor.process_postcode(user_msg_raw)
 
-    if error_msg: # Format validation failed
+    if error_msg: 
         state["attempts"] += 1
         bot_response = error_msg
         log_type = "get_postcode_invalid_format"
@@ -235,9 +238,9 @@ def handle_postcode_node(state: ChatState) -> ChatState:
             if suggestion_raw:
                 msg_parts.append(f"Did you perhaps mean {suggestion_raw}?")
             
-            if state["intent"] == Intent.BUY and state["buy_type"] == BuyType.NEW_HOME: # New home, not covered
+            if state["intent"] == Intent.BUY and state["buy_type"] == BuyType.NEW_HOME:
                 msg_parts.append(f"For new homes elsewhere, call us on {COMPANY_PHONE_NUMBER}.")
-            else: # Sell or Re-sale Buy, not covered
+            else: 
                 msg_parts.append(f"Please call {COMPANY_PHONE_NUMBER} for other options.")
             msg_parts.append("Anything else I can help with? (yes/no)")
             bot_response = " ".join(msg_parts)
@@ -254,16 +257,13 @@ def handle_reassistance_node(state: ChatState) -> ChatState:
     if choice == YesNo.YES:
         session_id_cache = state["session_id"]
         history_cache = state["interaction_history"]
-        # Reset state BUT keep session ID and full history
         state.clear()
-        state.update(create_initial_state()) # Get a fresh state dict
+        state.update(create_initial_state())
         state["session_id"] = session_id_cache
         state["interaction_history"] = history_cache
         
-        # Manually trigger initial greeting logic for the new flow
-        state = initial_greeting_node(state) # This will add the AIMessage for greeting
+        state = initial_greeting_node(state) 
         log_action = "reassistance_yes_restart"
-        # Bot response is now set by initial_greeting_node
         bot_response_for_log = state["messages"][-1].content if state["messages"] and isinstance(state["messages"][-1], AIMessage) else "Restarting..."
 
     elif choice == YesNo.NO:
@@ -272,7 +272,7 @@ def handle_reassistance_node(state: ChatState) -> ChatState:
         state["conversation_ended"] = True
         state["conversation_stage"] = ConversationStage.ENDED
         log_action = "reassistance_no_end"
-    else: # UNKNOWN
+    else: 
         state["attempts"] += 1
         bot_response_for_log = "I didn't quite get that. Could you please answer with 'yes' or 'no'?"
         state["messages"].append(AIMessage(content=bot_response_for_log))
@@ -293,14 +293,13 @@ def handle_max_attempts_fallback_node(state: ChatState) -> ChatState:
 def route_next_step(state: ChatState) -> str:
     if state.get("conversation_ended", False): return END
     if state["attempts"] >= MAX_ATTEMPTS:
-        state["attempts"] = 0 # Reset for the fallback node
+        state["attempts"] = 0 
         return "max_attempts_fallback_node"
 
-    # If AI just spoke, wait for user input
     if state["messages"] and isinstance(state["messages"][-1], AIMessage): return END
 
     stage = state["conversation_stage"]
-    if stage == ConversationStage.GREETING: return "initial_greeting_node" # Should be entry or restart
+    if stage == ConversationStage.GREETING: return "initial_greeting_node"
     if stage == ConversationStage.AWAITING_INTENT: return "handle_intent_node"
     if stage == ConversationStage.AWAITING_NAME: return "handle_name_node"
     if stage == ConversationStage.AWAITING_PHONE: return "handle_phone_node"
@@ -310,7 +309,7 @@ def route_next_step(state: ChatState) -> str:
     if stage == ConversationStage.AWAITING_POSTCODE: return "handle_postcode_node"
     if stage == ConversationStage.AWAITING_REASSISTANCE: return "handle_reassistance_node"
     
-    return END # Default exit if no specific route matches
+    return END
 
 # --- Build the Graph ---
 workflow = StateGraph(ChatState)
@@ -326,13 +325,11 @@ for name, func in nodes: workflow.add_node(name, func)
 
 workflow.set_entry_point("initial_greeting_node")
 
-# Edges: from each node, decide next based on `route_next_step`
-# The keys in the map are the possible return values of `route_next_step`
 routing_map = {name: name for name, _ in nodes}
 routing_map[END] = END
 
 for name, _ in nodes:
-    if name != "max_attempts_fallback_node": # Fallback node always goes to END
+    if name != "max_attempts_fallback_node": 
         workflow.add_conditional_edges(name, route_next_step, routing_map)
 workflow.add_edge("max_attempts_fallback_node", END)
 
@@ -344,9 +341,7 @@ except Exception as e:
     chatbot_app = None 
     raise
 
-# Make Enums available to utils.py for better type hinting in log_interaction
-# This is a way to handle potential circular dependencies if utils imported these directly
 import src.utils as project_utils
 project_utils.ConversationStage = ConversationStage
 project_utils.Intent = Intent
-project_utils.ChatState = ChatState # Assign the TypedDict for more specific hinting
+project_utils.ChatState = ChatState
