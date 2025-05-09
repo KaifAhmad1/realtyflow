@@ -14,7 +14,7 @@ except Exception as e:
     st.stop()
 
 
-st.set_page_config(page_title="RealtyFlow", page_icon="🏠", layout="centered") # Centered layout often looks cleaner for chat
+st.set_page_config(page_title="RealtyFlow", page_icon="🏠", layout="centered")
 
 # --- Enhanced Styling ---
 st.markdown("""
@@ -124,11 +124,20 @@ st.markdown("""
 
 
 # --- Helper function for bot "thinking" effect ---
-def stream_ pensée(text, delay=0.02):
+# def stream_pensée(text, delay=0.02): # OLD problematic line
+def simulate_typing_effect(text, delay=0.02): # RENAMED function
+    words = []
     for word in text.split():
-        yield word + " "
-        time.sleep(delay)
-    yield "\n" # Ensure newline at the end if needed
+        words.append(word)
+        # This function is not currently used to stream into st.write_stream,
+        # but if it were, you'd yield here.
+        # For now, it's just a placeholder if you want to add actual streaming later.
+        # If used with st.write_stream, it would look like:
+        # yield word + " "
+        # time.sleep(delay)
+    # yield "\n"
+    return " ".join(words) # For non-streaming use, just returns the text.
+
 
 # --- Chatbot State Initialization & Initial Greeting ---
 if "chat_state" not in st.session_state:
@@ -141,7 +150,6 @@ if "chat_state" not in st.session_state:
     else:
         st.session_state.chat_state = create_initial_state()
         try:
-            # Initial invocation to get the greeting message
             st.session_state.chat_state = chatbot_app.invoke(
                 st.session_state.chat_state, {"recursion_limit": 50}
             )
@@ -153,22 +161,13 @@ if "chat_state" not in st.session_state:
                  st.session_state.chat_state["interaction_history"] = []
             log_interaction(st.session_state.chat_state, "streamlit_init_invoke_error", details={"error": str(e)})
 
-# Store messages separately for display to avoid showing user input prematurely
 if "display_messages" not in st.session_state:
     st.session_state.display_messages = []
 
-# Sync display_messages with chat_state messages ONLY IF it's from AI or already processed human message
-# This is a bit tricky; the core idea is to only add to display_messages what's confirmed.
-# A simpler approach: always mirror chat_state.messages to display_messages after bot response.
-# For now, we'll rely on re-rendering after bot response to update the display.
 
 # --- Sidebar ---
 with st.sidebar:
-    # Placeholder for a logo image if you have one in an 'assets' folder
-    # try:
-    #     st.image("assets/realtyflow_logo.png", width=150)
-    # except FileNotFoundError:
-    st.image("https://img.icons8.com/fluency/96/000000/city-buildings.png", width=80) # A different, cleaner icon
+    st.image("https://img.icons8.com/fluency/96/000000/city-buildings.png", width=80)
     st.title("RealtyFlow")
     st.markdown("Your Intelligent Real Estate Assistant. Let's find your perfect property solution!")
     st.markdown("---")
@@ -184,7 +183,7 @@ with st.sidebar:
             st.session_state.chat_state["session_id"] = old_session_id
             st.session_state.chat_state["interaction_history"] = old_history
             log_interaction(st.session_state.chat_state, "user_restart_streamlit_button")
-            st.session_state.display_messages = [] # Clear display messages too
+            st.session_state.display_messages = []
 
             try:
                 st.session_state.chat_state = chatbot_app.invoke(st.session_state.chat_state, {"recursion_limit": 50})
@@ -207,20 +206,14 @@ with st.sidebar:
 # --- Main Chat Interface ---
 st.header("Chat with RealtyFlow AI 💬")
 
-# Display chat messages from chat_state.messages
-# This ensures that only processed messages (including the user's own confirmed message) are shown.
 for msg in st.session_state.chat_state.get("messages", []):
     if isinstance(msg, AIMessage):
-        with st.chat_message("assistant", avatar="🤖"): # Can use a URL for avatar: avatar="URL_TO_BOT_AVATAR.png"
-            # To simulate streaming for AI messages (if desired, and if they are not already streamed by LangGraph)
-            # For now, direct display:
+        with st.chat_message("assistant", avatar="🤖"):
             st.markdown(msg.content, unsafe_allow_html=True)
     elif isinstance(msg, HumanMessage):
-        with st.chat_message("user", avatar="🧑"): # Can use a URL: avatar="URL_TO_USER_AVATAR.png"
+        with st.chat_message("user", avatar="🧑"):
             st.markdown(msg.content, unsafe_allow_html=True)
 
-
-# User input handling
 is_chat_disabled = st.session_state.get("chat_state", {}).get("conversation_ended", False) or \
                    ('chatbot_app' not in globals() or chatbot_app is None)
 
@@ -234,17 +227,14 @@ if is_chat_disabled:
 user_input = st.chat_input(input_prompt, disabled=is_chat_disabled, key="chat_input_main")
 
 if user_input and not is_chat_disabled:
-    # 1. Add user message to the official chat_state
     st.session_state.chat_state["messages"].append(HumanMessage(content=user_input))
     
-    # 2. Immediately re-render to show the user's message (it's now in chat_state.messages)
-    #    A placeholder can be shown while bot is "thinking"
+    # Display user's message immediately (it's now the last in chat_state.messages)
     with st.chat_message("user", avatar="🧑"):
-        st.markdown(user_input, unsafe_allow_html=True) # Show user's latest message immediately
+        st.markdown(user_input, unsafe_allow_html=True)
 
-    with st.spinner("RealtyFlow is thinking..."): # Spinner while bot processes
+    with st.spinner("RealtyFlow is thinking..."):
         try:
-            # 3. Invoke the chatbot with the new state
             st.session_state.chat_state = chatbot_app.invoke(
                 st.session_state.chat_state,
                 {"recursion_limit": 50}
@@ -252,14 +242,11 @@ if user_input and not is_chat_disabled:
         except Exception as e:
             print(f"ERROR: Invoking chatbot with user input '{user_input}': {e}")
             error_msg = "I'm sorry, an unexpected issue occurred. Please try again or restart."
-            # Add error to official messages
             st.session_state.chat_state["messages"].append(AIMessage(content=error_msg))
             st.session_state.chat_state["last_error"] = str(e)
             log_interaction(st.session_state.chat_state, "streamlit_invoke_error_user_input", details={"error": str(e)})
     
-    # 4. Rerun to display the bot's response (and clear the spinner)
     st.rerun()
 
 elif is_chat_disabled and not st.session_state.chat_state.get("messages", []):
-    # This might happen if the very first initialization failed catastrophically
     st.warning("Chat is currently unavailable. Please try refreshing the page or contact support if the issue persists.")
