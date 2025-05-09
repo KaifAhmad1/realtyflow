@@ -1,3 +1,4 @@
+# src/agents.py
 import re
 import json
 import numpy as np
@@ -5,11 +6,12 @@ import faiss
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
-from typing import Tuple, Optional, List, Set, Dict, Any
+from typing import Tuple, Optional, List, Set, Dict, Any # <--- Ensure all are here
 from enum import Enum
 
 from .utils import normalize_postcode
 
+# Define basic Enums here, these will be aligned with those in chatbot_engine.py
 class AgentIntent(str, Enum):
     BUY = "buy"
     SELL = "sell"
@@ -25,13 +27,13 @@ class AgentYesNo(str, Enum):
     NO = "no"
     UNKNOWN = "unknown"
 
-AgentChatState = Dict[str, Any] # Placeholder for type hinting
+AgentChatState = Dict[str, Any]
 
 class EnhancedIntentClassifierAgent:
     def __init__(self, llm_model: ChatGoogleGenerativeAI):
         self.llm = llm_model
 
-    def _build_classification_chain(self, entity_name: str, allowed_options: List[str], description: str, examples: List[Dict[str, str]]):
+    def _build_classification_chain(self, entity_name: str, allowed_options: List[str], description: str, examples: List[Dict[str, str]]): # <--- List, Dict
         examples_text = "\n".join([f"User: \"{e['input']}\" -> Assistant: {e['output']}" for e in examples])
         prompt_template_str = f"""Your task is to classify the user's input for '{entity_name}'.
 {description}
@@ -91,7 +93,7 @@ class EnhancedInfoGathererAgent:
     def __init__(self, llm_model: ChatGoogleGenerativeAI):
         self.llm = llm_model
 
-    def _validate_with_llm(self, field_name: str, value_to_validate: str) -> Tuple[bool, str]:
+    def _validate_with_llm(self, field_name: str, value_to_validate: str) -> Tuple[bool, str]: # <--- Tuple
         template_str = """You are a data validation assistant.
 Task: Check if the provided value for the field '{field}' is plausible and correctly formatted.
 Input Value: {input_value}
@@ -117,9 +119,8 @@ JSON Response:"""
         try:
             result = chain.invoke({"field": field_name, "input_value": value_to_validate})
             return result.get("is_valid", False), result.get("reason", f"Validation inconclusive for {field_name}")
-        except Exception: # Fallback for any JSON parsing error or LLM error
+        except Exception:
             raw_output = str_chain_for_fallback.invoke({"field": field_name, "input_value": value_to_validate})
-            # Try to infer from raw output if specific keywords are present
             if "\"is_valid\": true" in raw_output.lower() or "valid." in raw_output.lower():
                 return True, "Valid (inferred from text)."
             if "\"is_valid\": false" in raw_output.lower() or "invalid" in raw_output.lower():
@@ -128,7 +129,7 @@ JSON Response:"""
                 return False, reason
             return False, f"Error validating {field_name}: LLM response format unclear. Raw: {raw_output[:100]}"
 
-    def get_name(self, state: AgentChatState, user_msg: str) -> Tuple[bool, str, Optional[str]]: # is_valid, response_msg, name_value
+    def get_name(self, state: AgentChatState, user_msg: str) -> Tuple[bool, str, Optional[str]]: # <--- Tuple, Optional
         is_valid, reason = self._validate_with_llm("name", user_msg)
         if not is_valid:
             return False, f"That doesn't seem like a valid name. {reason} Could you please provide your full name?", None
@@ -136,7 +137,7 @@ JSON Response:"""
             return True, f"Thanks, {user_msg}! Can I get your phone number?", user_msg
 
     def get_phone(self, state: AgentChatState, user_msg: str) -> Tuple[bool, str, Optional[str]]:
-        if not re.search(r'\d{7,}', user_msg): # Basic check for at least 7 digits
+        if not re.search(r'\d{7,}', user_msg):
             return False, "Phone number must contain at least 7 digits. Please enter a valid phone number.", None
         
         is_valid, reason = self._validate_with_llm("phone number", user_msg)
@@ -146,20 +147,20 @@ JSON Response:"""
             return True, "Great. And your email address?", user_msg
 
     def get_email(self, state: AgentChatState, user_msg: str) -> Tuple[bool, str, Optional[str]]:
-        if "@" not in user_msg or "." not in user_msg.split("@")[-1]: # Basic format check
+        if "@" not in user_msg or "." not in user_msg.split("@")[-1]:
             return False, "Email address must include '@' and a '.' in the domain. Please provide a valid email address.", None
 
         is_valid, reason = self._validate_with_llm("email address", user_msg)
         if not is_valid:
             return False, f"Please provide a valid email address. {reason}", None
         else:
-            return True, "", user_msg # Bot message determined by graph based on intent
+            return True, "", user_msg
 
 class EnhancedBudgetProcessorAgent:
     def __init__(self, llm_model: ChatGoogleGenerativeAI):
         self.llm = llm_model
 
-    def _extract_budget_with_llm(self, text: str) -> Optional[float]:
+    def _extract_budget_with_llm(self, text: str) -> Optional[float]: # <--- Optional
         template_str = """Your task is to extract a numerical budget amount in pounds (£) from the user's text.
 User's text: "{text_input}"
 Instructions:
@@ -176,13 +177,13 @@ JSON Response:"""
         chain = prompt | self.llm | parser
         try:
             result = chain.invoke({"text_input": text})
-            if result.get("budget") is not None and result.get("confidence", 0.0) >= 0.5: # Confidence threshold
+            if result.get("budget") is not None and result.get("confidence", 0.0) >= 0.5:
                 return float(result["budget"])
         except Exception as e:
             print(f"LLM budget extraction (JSON) failed for '{text}': {e}")
-        return None # Fallback if LLM fails or confidence is low
+        return None
 
-    def _parse_budget_rules(self, text: str) -> Optional[float]:
+    def _parse_budget_rules(self, text: str) -> Optional[float]: # <--- Optional
         text_lower = text.lower()
         text_cleaned = re.sub(r'[£$,]', '', text_lower)
         numbers_extracted = []
@@ -208,29 +209,28 @@ JSON Response:"""
         
         return max(numbers_extracted) if numbers_extracted else None
 
-    def process_budget(self, user_msg: str) -> Tuple[Optional[float], str]: # budget_val, response_msg
+    def process_budget(self, user_msg: str) -> Tuple[Optional[float], str]: # <--- Tuple, Optional
         budget_val = self._extract_budget_with_llm(user_msg)
         if budget_val is None:
             budget_val = self._parse_budget_rules(user_msg)
 
         if budget_val is None or budget_val <= 0:
             return None, "I couldn't understand the budget. Please provide a clear amount (e.g., '£500,000', '1.2m')."
-        return budget_val, "" # Bot message determined by graph
+        return budget_val, ""
 
 class EnhancedPostcodeProcessorAgent:
-    def __init__(self, eligible_set: Set[str], eligible_list_raw: List[str], embedding_model_instance: GoogleGenerativeAIEmbeddings, llm_model: ChatGoogleGenerativeAI):
-        self.eligible_set_normalized = eligible_set # Set of normalized postcodes for exact match
-        self.eligible_list_raw = eligible_list_raw # List of original format postcodes for FAISS suggestions
+    def __init__(self, eligible_set: Set[str], eligible_list_raw: List[str], embedding_model_instance: GoogleGenerativeAIEmbeddings, llm_model: ChatGoogleGenerativeAI): # <--- Set, List
+        self.eligible_set_normalized = eligible_set
+        self.eligible_list_raw = eligible_list_raw
         self.embedding_model = embedding_model_instance
-        self.llm = llm_model # Not used for validation in this version, but available
+        self.llm = llm_model
         self.index = None
         self.dimension = 0
-        if self.eligible_list_raw: # Build index from raw list
+        if self.eligible_list_raw:
             self._build_index()
 
     def _build_index(self):
         try:
-            # Embed the original (non-normalized) eligible postcodes for better suggestions
             str_eligible_list_raw = [str(pc) for pc in self.eligible_list_raw]
             embeddings = np.array(self.embedding_model.embed_documents(str_eligible_list_raw)).astype('float32')
             
@@ -249,41 +249,37 @@ class EnhancedPostcodeProcessorAgent:
             print(f"Error building FAISS index: {e}")
             self.index = None
 
-    def _validate_postcode_format(self, postcode_text: str) -> Tuple[bool, str]:
-        # UK Postcode Regex (allows for space, case-insensitive matching)
+    def _validate_postcode_format(self, postcode_text: str) -> Tuple[bool, str]: # <--- Tuple
         uk_pc_pattern = r"^[A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][A-Z]{2}$"
         if not re.fullmatch(uk_pc_pattern, postcode_text.upper()):
             return False, "Postcode does not match the typical UK format (e.g., SW1A 1AA or M1 1AE)."
         return True, "Format seems valid."
 
-    def _find_similar_postcodes(self, postcode_query: str, k: int = 1) -> Optional[str]:
+    def _find_similar_postcodes(self, postcode_query: str, k: int = 1) -> Optional[str]: # <--- Optional
         if not self.index or self.dimension == 0: return None
         try:
-            # Query with user's raw input for better typo correction via embeddings
             query_embedding = np.array(self.embedding_model.embed_query(postcode_query)).astype('float32').reshape(1, -1)
-            if query_embedding.shape[1] != self.dimension: return None # Dimension mismatch
+            if query_embedding.shape[1] != self.dimension: return None
 
             distances, indices = self.index.search(query_embedding, k)
             if indices.size > 0 and indices[0][0] != -1 and indices[0][0] < len(self.eligible_list_raw):
-                return self.eligible_list_raw[indices[0][0]] # Return original format from raw list
+                return self.eligible_list_raw[indices[0][0]]
         except Exception as e:
             print(f"Error during FAISS similarity search for '{postcode_query}': {e}")
         return None
 
-    def process_postcode(self, user_msg_raw: str) -> Tuple[str, bool, Optional[str], str]:
-        # Returns: normalized_pc, is_covered, suggestion (raw format), error_or_response_msg
+    def process_postcode(self, user_msg_raw: str) -> Tuple[str, bool, Optional[str], str]: # <--- Tuple, Optional
         is_format_valid, reason = self._validate_postcode_format(user_msg_raw)
         if not is_format_valid:
             return "", False, None, f"That postcode doesn't look quite right. {reason} Please try again."
 
         norm_pc = normalize_postcode(user_msg_raw)
-        is_covered = norm_pc in self.eligible_set_normalized # Check normalized against normalized set
+        is_covered = norm_pc in self.eligible_set_normalized
         suggestion = None
 
         if not is_covered:
             suggestion = self._find_similar_postcodes(user_msg_raw)
-            # Avoid suggesting the same (differently formatted) input
             if suggestion and normalize_postcode(suggestion) == norm_pc:
                 suggestion = None
         
-        return norm_pc, is_covered, suggestion, "" # Bot message determined by graph
+        return norm_pc, is_covered, suggestion, ""
